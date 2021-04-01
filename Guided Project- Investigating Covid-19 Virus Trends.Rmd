@@ -1,0 +1,197 @@
+---
+title: 'Guided Project: Investigating Covid-19 Virus Trends'
+author: "Michael Opiekun"
+date: "4/1/2021"
+output: html_document
+---
+## Summary
+
+This project is to deliniate trends in the Covid-19 Pandemic using real world data. The goal is to increase understanding of data analytics in R and oberserve trends among the World Covid-19 data.
+
+# Organizatining the data
+
+```{r opening and reading data}
+# Open data from covid19.csv and observe structure and dim size
+library(readr)
+covid_df <- read_csv("~/Downloads/covid19.csv")
+dim(covid_df)
+vector_cols <- colnames(covid_df)
+vector_cols
+head(covid_df)
+
+# Use glipse to identify data kinds
+library(tibble)
+glimpse(covid_df)
+
+```
+
+## Oragnizing Data
+
+Organizing data to analyze country data
+
+```{r cleaning and organizing data}
+covid_df_all <- covid_df %>% filter(Province_State == "All States") # Filter for full country
+covid_df_all_states <- covid_df_all[c(-5)] #Remove 'Province_State' column as the column is homogeneous
+```
+
+## Select Specific Data
+
+```{r Data Selection}
+covid_df_all_states_cumulative <- select(covid_df_all_states, Date, Continent_Name, Two_Letter_Country_Code, positive, hospitalized, recovered, death, total_tested)
+covid_df_all_states_daily <- select(covid_df_all_states, Date, Country_Region, active, hospitalizedCurr, daily_tested, daily_positive)
+```
+
+# Identifying Highest Fatality Rates
+
+## Summarizing Data Based on Continent_Name and Two_Letter_Country_Code
+
+``` {r Summarizing Deaths}
+library(dplyr)
+covid_df_all_states_cumulative_max <- covid_df_all_states_cumulative %>%     group_by(Continent_Name, Two_Letter_Country_Code) %>% summarize(max = max(death) ) %>% filter(max>0)
+covid_df_all_states_cumulative_max
+```
+
+## Displaying max number of deaths by country, colored by continent
+
+```{r plotting deaths}
+library(ggplot2)
+
+qplot(x = Two_Letter_Country_Code,
+      y = max,
+      col = Continent_Name,
+      data =  covid_df_all_states_cumulative_max
+      )
+```
+
+##Conclusion: Answering question: Which countries have had the highest fatality rates?
+```{r top 3 fatality}
+death_top_3 <- c("US", "IT", "GB")
+```
+
+# Extracting the top ten cases countries data
+
+## Summarizing data based on Country_Region column
+
+```{r Summarizing for Top 10 Cases}
+covid_df_all_states_daily_sum <-  covid_df_all_states_daily %>% group_by(Country_Region) %>% summarize(tested = sum(daily_tested),
+                                       positive = sum(daily_positive),
+                                       active = sum(active),
+                                       hospitalized = sum(hospitalizedCurr)
+                                       ) %>% arrange(-tested)
+covid_df_all_states_daily_sum
+```
+
+## Extract top 10 results
+
+```{r top 10}
+covid_top_10 <-  head(covid_df_all_states_daily_sum,10)
+```
+
+# Identify the countires that have had the highest number of positive cases against the number of tests
+
+## Create vectors from covid_top_10 dataframe
+
+```{r top 10 vector creation}
+countries <- covid_top_10$Country_Region
+tested_cases <- covid_top_10$tested
+positive_cases <- covid_top_10$positive
+active_cases <- covid_top_10$active
+hospitalized_cases <- covid_top_10$hospitalized
+```
+
+## Naming Vectors
+
+```{r Naming top 10 vetors}
+names(countries) <- countries
+names(tested_cases) <- countries
+names(positive_cases) <- countries
+names(active_cases) <- countries
+names(hospitalized_cases) <- countries
+```
+
+## Identify top three positive against tested cases
+
+```{r Top 10 positive v Tested}
+positive_cases/tested_cases
+```
+
+## Conclusion
+
+```{r top 3 positive v Tested}
+positive_tested_top_3 <- head(positive_cases/tested_cases,3)
+```
+
+# Identifying countries affected by population
+
+## Creating matrix
+
+```{r Creating Matrix}
+# Create matrix covid_mat
+covid_mat <- cbind(tested_cases, positive_cases, active_cases, hospitalized_cases)
+
+# Create population vector
+population <- c(331002651, 145934462, 60461826, 1380004385, 84339067, 37742154, 67886011, 25499884, 32971854, 37846611)
+
+# Dividing the matrix by the population vector
+covid_mat <- covid_mat*100/population
+
+covid_mat
+```
+
+## Ranking for every measurement in matrix covid_mat
+
+```{r Ranking matrix}
+tested_cases_rank <- rank(covid_mat[,"tested_cases"])
+positive_cases_rank <- rank(covid_mat[,"positive_cases"])
+active_cases_rank <- rank(covid_mat[,"active_cases"])
+hospitalized_cases_rank <- rank(covid_mat[,"hospitalized_cases"])
+
+# Combining rankings
+covid_mat_rank <- rbind(tested_cases_rank, positive_cases_rank, active_cases_rank, hospitalized_cases_rank)
+
+covid_mat_rank
+
+covid_mat_rank[1,]
+
+covid_mat_rank[-1,]
+
+colSums(covid_mat_rank)
+```
+
+## Conclusion 
+```{r Ranking Conclusion}
+best_effor_tested_cased_top_3 <- c("India", "United Kingdom", "turkey")
+
+most_affected_country <- "Italy"
+least_affected_country <- "India"
+```
+
+# Culminating Everything
+
+```{r Putting Everything Together}
+question_list <- list(
+  "Which countries have had the highest number of deaths due to COVID-19?",
+  "Which countries have had the highest number of positive cases against the number of tests?",
+  "Which countries have made the best effort in terms of the number of COVID-19 tests conducted related to their population?",
+  "Which countries were ultimately the most and least affected related to their population?"
+  )
+
+answers_list <- list(
+  "Death" = death_top_3,
+  "Positive tested cases" = positive_tested_top_3,
+  "The best effort in test related to the population" = best_effor_tested_cased_top_3,
+  "The most affected country related to its population" = most_affected_country,
+  "The least affected country related to its population" = least_affected_country
+)
+
+datasets = list(original = covid_df, all_states = covid_df_all_states, cumulative = covid_df_all_states_cumulative, daily = covid_df_all_states_daily
+)
+
+matricies <- list(covid_mat, covid_mat_rank)
+
+vectors <- list(vector_cols, population, countries)
+
+data_structure_list <- list("data_frame" = datasets, "matrix"= matricies, "vector" = vectors)
+
+covid_analysis_list <- c(question_list, answers_list, data_structure_list)
+```
