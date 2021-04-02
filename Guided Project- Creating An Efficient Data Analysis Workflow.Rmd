@@ -1,0 +1,100 @@
+---
+title: 'Guided Project: Creating An Efficient Data Analysis Workflow'
+author: "Michael Opiekun"
+date: "4/1/2021"
+output: html_document
+---
+
+## Working through Creating an Efficient Data Analysis Workflow
+
+# Observing Data
+
+```{r Library}
+library(tidyverse)
+library(dplyr)
+reviews <- read_csv("~/Documents/Programs_in_R/DataQuest/Data/book_reviews.csv")
+dim(reviews)
+col_names <- for (i in colnames(reviews)) {
+  typeof(reviews[[i]])
+}
+
+#Unique Reviews
+for (i in colnames(reviews)) {
+  print("Unique values in column:")
+  print(i)
+  print(unique(reviews[[i]]))
+  print("")
+}
+```
+
+## Cleaning Data
+
+```{r Cleaning}
+
+reviews_cleaned <- reviews %>% filter(!is.na(review))#Keep only full reviews
+dim(reviews_cleaned)
+#206 reviews were removed for incompleteness
+```
+
+## Changing states to a consistent name
+
+```{r State names}
+reviews_cleaned <- reviews_cleaned %>% mutate(
+  state = case_when(
+    state == "California" ~ "CA",
+    state == "New York" ~ "NY",
+    state == "Florida" ~ "FL",
+    state == "Texas" ~ "TX",
+    TRUE ~ state # Stays the same if just postal code
+    )
+)
+```
+
+## Changing Review to numeral form
+
+```{r Review to Review_num}
+review_num <- reviews_cleaned %>% mutate(
+  review_num = case_when(
+    review == "Poor" ~ 1,
+    review == "Fair" ~ 2,
+    review == "Good" ~ 3,
+    review == "Great" ~ 4,
+    review == "Excellent" ~ 5
+    
+  ),
+  is_high_review = if_else(review_num >= 4, TRUE, FALSE)
+)
+
+```
+
+# Looking for most Profitable books
+
+##Choosing Most Profitable based on books sold * price
+
+```{r Most Profitable}
+for_profitable <- reviews_cleaned %>% 
+  group_by(book) %>% 
+  summarize(
+    purchased = n(),
+    price = mean(price)
+    ) %>%  arrange(-purchased)
+most_profitable <- for_profitable %>% group_by(book) %>%
+mutate(
+  revenue = purchased*price 
+) %>% arrange(-revenue)
+
+
+```
+
+
+Secrets of R for Advanced Students created the most revenue while Fundamentals of R for Beginners sold most copies.
+
+
+The point of this project was to create a smooth workflow and determine most profitable book from R class books.
+
+
+
+
+
+
+
