@@ -1,0 +1,131 @@
+---
+title: "Creating and Effective Data Analysis Workflow, part 2"
+author: "Michael Opiekun"
+date: "4/4/2021"
+output: html_document
+---
+## Working to create an efficient data workflow by working through a Guided Data quest Project
+
+# Observe Sales Data set
+```{r Ingest Data and Library}
+library(tidyverse)
+library(tibble)
+library(purrr)
+library(lubridate)
+library(stringr)
+
+sales <- read.csv("~/Documents/Programs_in_R/DataQuest/Data/sales2019.csv")
+
+dim(sales) #5000 by 5
+colnames(sales) # "date" "user_submitted_review" "title" "total_purchased"                        "customer_type"      
+#Types of columns
+for(col in colnames(sales)) {
+  paste0(col, " : ", typeof(sales[[col]])) %>% print
+}
+
+unique(sales) # there is missing data in total_purchased and user_submitted_review
+
+# Is there missing data anywhere?
+for (col in colnames(sales)) {
+  paste0(col, 
+         ", number of missing data rows: ", 
+         is.na(sales[[col]]) %>% sum) %>% print
+}
+
+```
+
+# Cleaning the Data
+
+## Getting rid of missing values
+
+```{r Getting Rid of Missing Values}
+
+# Remove NA values from reviews 
+complete_sales <-  sales %>% filter(
+  !is.na(user_submitted_review)
+)    #Down to 4544 rows
+
+
+#Calculate mean for books purchased
+mean_purchased <- complete_sales %>%
+  filter(!is.na(total_purchased)) %>%
+  pull(total_purchased) %>%
+  mean
+
+#Fill in missing values in total_purchased
+complete_sales <- complete_sales %>%
+  mutate(
+    imputed_purchases = if_else(is.na(total_purchased), 
+                                     mean_purchased,
+                                as.numeric(total_purchased))
+  )
+```
+
+# Determine if postive or negative review
+
+## Classifying reviews
+
+```{r Good Bad Review}
+#Defining positive reviews
+review_positive <- function(review) {case_when(
+  str_detect(review,"a lot") ~ TRUE,
+  str_detect(review,"Awesome") ~ TRUE,
+  str_detect(review,"Good") ~ TRUE,
+  str_detect(review,"Never") ~ TRUE,
+  str_detect(review,"OK") ~ TRUE,
+  TRUE~FALSE #none of the above words contained in the review
+  )
+}
+
+complete_sales <- complete_sales %>% mutate(
+  
+  is_positive = unlist(map(user_submitted_review,review_positive))
+)
+
+```
+
+# Was the new book program effective in increasing book sales?
+
+## Compare books sold before and after program started
+
+```{r Date Compared to before and after}
+complete_sales <-  complete_sales %>% mutate(
+  date_useable = if_else(mdy(date) < mdy("07/01/2019"), "Pre", "Post")
+)
+
+#Check if sales increased in period after
+complete_sales %>% group_by(date_useable) %>% 
+  summarize(sum(imputed_purchases))  
+#Numbers decreased slightly after
+
+#Check if individual books became more popular
+complete_sales %>% group_by(date_useable, title) %>%
+  summarize(sum(imputed_purchases)) %>% arrange(title, date_useable)
+  
+
+```
+
+# Was customer type more likely to buy more books before or after program?
+
+## Compare number of books per customer before and after program started
+
+```{r Customer type before and after }
+#Check if sales increased in period after based on customer type
+complete_sales %>% group_by(date_useable, customer_type) %>% 
+  summarize(sum(imputed_purchases)) %>% arrange(customer_type, date_useable)
+
+#Business customers bought more but drop in individual sales
+
+
+```
+
+# Did review scores improve as a result of the program?
+
+## Test review scores
+
+```{r Review Scores}
+complete_sales %>% group_by(date_useable, is_positive) %>% 
+  summarize(sum(imputed_purchases)) %>% arrange(is_positive, date_useable)
+
+# Positive reviews did increase after the start of the program but not by much.
+```
