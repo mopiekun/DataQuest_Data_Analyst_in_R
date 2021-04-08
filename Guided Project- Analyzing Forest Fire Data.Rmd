@@ -1,0 +1,135 @@
+---
+title: 'Guided Project: Analyzing Forest Fire Data'
+author: "Michael Opiekun"
+date: "4/7/2021"
+output: html_document
+---
+## Observing forest fire data from Europe to better understand plotting in R
+
+```{r Ingest Data}
+library(tidyverse)
+
+forest_fires <- read.csv("~/Documents/Programs_in_R/DataQuest/Data/forestfires.csv")
+
+# each row represents a fire that occurred
+forest_fires
+```
+## The indivdual column descriptions:
+X: X-axis spatial coordinate within the Montesinho park map: 1 to 9
+Y: Y-axis spatial coordinate within the Montesinho park map: 2 to 9
+month: Month of the year: 'jan' to 'dec'
+day: Day of the week: 'mon' to 'sun'
+FFMC: Fine Fuel Moisture Code index from the FWI system: 18.7 to 96.20
+DMC: Duff Moisture Code index from the FWI system: 1.1 to 291.3
+DC: Drought Code index from the FWI system: 7.9 to 860.6
+ISI: Initial Spread Index from the FWI system: 0.0 to 56.10
+temp: Temperature in Celsius degrees: 2.2 to 33.30
+RH: Relative humidity in percentage: 15.0 to 100
+wind: Wind speed in km/h: 0.40 to 9.40
+rain: Outside rain in mm/m2 : 0.0 to 6.4
+area: The burned area of the forest (in ha): 0.00 to 1090.84
+
+## Convert the month and day variables into a categorical variables
+
+```{r convert months and days to categorical variables}
+forest_fires %>% pull(month) %>% unique
+
+forest_fires %>% pull(day) %>% unique
+
+# define order of months and days
+month_order <- c("jan","feb","mar","apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+#Assume Sunday is first day of the week
+day_order <- c("sun","mon","tue","wed","thu","fri","sat")
+
+forest_fires <-  forest_fires %>% mutate(month = factor(month, levels = month_order),
+                                        day = factor(day, levels = day_order)
+)
+
+```
+
+
+## Which months do forest fires happen the most? Which days of the week do forest fires happen the most?
+
+```{r Most Fires by month and Day}
+#Tibble: Fires by Month
+forest_fires_month <- forest_fires %>% group_by(month) %>% 
+                      summarize(fires_month = n())
+#Tibble: Fires by Day
+forest_fires_day <- forest_fires %>% group_by(day) %>% 
+                      summarize(fires_day = n())
+library(ggplot2)
+#Visualize Fires by month
+forest_fires_month %>% ggplot(aes(x = month, y = fires_month)) + geom_col() +
+  labs(title = "Fire Frequency by Month",
+       x = "Month",
+       y = "Fires")
+
+#Visualize Fires by month
+forest_fires_day %>% ggplot(aes(x = day, y = fires_day)) + geom_col() +
+  labs(title = "Fire Frequency by Day",
+       x = "Month",
+       y = "Fires")
+
+```
+
+Fires seem to occur most frequently in August and September and most on Friday, Saturday, and Sunday.
+
+## Look at the relationships between other variables and frequencies of fores in August and September
+
+```{r Other Factors relationship with Fires}
+
+# Make tibble long
+forest_fires_long <- forest_fires %>% pivot_longer(
+  cols = c("FFMC","DMC","DC","ISI","temp","RH","wind","rain"
+  ),
+  names_to = "data_col",
+  values_to = "values"
+  
+)
+
+forest_fires_long %>% ggplot(aes(x = month, y = values)) + geom_boxplot() +
+  facet_wrap(facets = vars(data_col),
+             scales = "free_y") +
+  labs(
+    title = "Variable changes per month",
+    x = "month",
+    y = "Variable Value"
+  )
+
+```
+
+## Look at Area of fire burned vs other variables
+
+```{r Area vs Variables}
+
+#Plot scatter plot for each variable
+forest_fires_long %>% ggplot(aes(x = values, y = area)) + geom_point() +
+  facet_wrap(facets = vars(data_col),
+            scales = "free_x") +
+  labs(
+    title = "Variables Effect of Fire Area",
+       x = "Variable Value",
+       y = "Area (hectare)")
+
+#some extreme outliers in each plot crushes the visualization
+
+```
+
+## Outlier Issues
+
+Two points are extremely large burn areas that kill the plots. Removing them will help visualize better
+
+```{r Outlier}
+
+#Plot scatter plot for each variable without outliers
+forest_fires_long %>% filter(area < 600) %>% ggplot(aes(x = values, y = area)) + geom_point() +
+  facet_wrap(facets = vars(data_col),
+            scales = "free_x") +
+  labs(
+    title = "Variables Effect of Fire Area",
+       x = "Variable Value",
+       y = "Area (hectare)")
+
+```
+Forest fires seem to be negatively correlated with ISI and rain and postively correlated with FFMC and DC.
