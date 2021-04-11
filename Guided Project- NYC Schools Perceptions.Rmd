@@ -1,0 +1,166 @@
+---
+title: 'Guided Project: NYC Schools Perceptions'
+author: "Michael Opiekun"
+date: "4/10/2021"
+output: html_document
+---
+
+## Guided Project for Data Cleaning
+
+Working on cleaning data for NYC schools. Uses data from survey responses to gauge parent, student, and teacher perceptions of the quality of New York City school and relate to SAT scores. Data are from NYC Open Data 2011 NYC School Survey.
+
+Question related based on:
+Safety and Respect
+Communication
+Engagement
+Academic Expectations
+The following groups responded to the survey:
+
+Parents
+Teachers
+Students
+Total (The average of parent, teacher, and student scores)
+
+## School Data Dictionary
+~/Documents/Programs_in_R/DataQuest/Data//school_files/Survey Data Dictionary.xls
+
+
+```{r setup}
+library(readr)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+
+```
+
+
+## Ingest Data
+```{r Ingest Data}
+combined <- read.csv("~/Documents/Programs_in_R/DataQuest/Data//school_files/combined.csv")
+
+survey_gened <- read_tsv("~/Documents/Programs_in_R/DataQuest/Data//school_files/masterfile11_gened_final.txt")
+
+survey_d75 <- read_tsv("~/Documents/Programs_in_R/DataQuest/Data//school_files/masterfile11_d75_final.txt")
+
+```
+
+Clean data frames to include only high school data and variables that are needed for the analysis.
+
+```{r Data Cleaning}
+# Filter for hih school and select columns for data
+survey_hs <- survey_gened %>% filter(schooltype == "High School") %>%
+  select(dbn:aca_tot_11)
+
+#Filter columns for data
+survey_75 <- survey_d75 %>% select(dbn:aca_tot_11)
+
+```
+
+Combine Dataframes
+
+```{r Combine Data Frames} 
+# Combine surveys
+survey_total <- survey_hs %>% bind_rows(survey_75)
+
+#Change "dbn" to "DBN" to allow combination with "combined" dataframe
+survey_total <- survey_total %>% rename(DBN = dbn)
+
+#Combine with left_join using DBN
+combined_survey <- combined %>% left_join(survey_total, by = "DBN")
+
+```
+
+## Answering questions:
+
+Do student, teacher, and parent perceptions of NYC school quality appear to be related to demographic and academic success metrics?
+
+```{r Correlation Matrix}
+# Create a correlation matrix to see if school perceptions are related to academic and demographic success
+
+# Cor matrix with sat scores and survey responses
+cor_mat <- combined_survey %>% select(avg_sat_score, saf_p_11:aca_tot_11) %>%
+  cor(use = "pairwise.complete.obs")
+
+# Create tibble for manipulation
+cor_tibb <- cor_mat %>% as_tibble(rownames = "variable")
+
+#Find interesting relationships
+strong_cor <- cor_tibb %>% select(variable, avg_sat_score) %>%
+  filter(avg_sat_score > 0.25 | avg_sat_score < -.25)
+
+```
+
+
+Scatter plots for Strong Relationships
+
+```{r Scatter Plots}
+#Method Learned
+strong_cor$variable
+# avg_sat_score" "saf_t_11"      "saf_s_11"      "aca_s_11"     "saf_tot_11"   
+ggplot(data = combined_survey) + aes(x = saf_t_11, y = avg_sat_score) + geom_point()
+ggplot(data = combined_survey) + aes(x = saf_s_11, y = avg_sat_score) + geom_point()
+ggplot(data = combined_survey) + aes(x = aca_s_11, y = avg_sat_score) + geom_point()
+ggplot(data = combined_survey) + aes(x = saf_tot_11, y = avg_sat_score) + geom_point()
+
+#Method From Answer
+create_scatter <- function(x,y) {
+  ggplot(data = combined_survey) +
+    aes_string(x = x, y = y) +
+    geom_point()
+}
+
+x_1 <- strong_cor$variable[2:5]
+y_1 <- "avg_sat_score"
+
+map2(x_1, y_1, create_scatter)
+
+```
+
+Correlations were high but plot were similar among each correlation with a mild positive correlation
+
+
+## Look at how parents, teachers, and students answered differently
+
+First reshape and create new variables for correlations
+
+```{r Reshape for Parent, Teacher, Student}
+
+# Make tibble long
+combined_survey_long <- combined_survey %>% pivot_longer(cols = c(saf_p_11:aca_tot_11),
+names_to = "survey_question",
+values_to = "score")
+
+#Make new variables for string names                                    
+combined_survey_long <- combined_survey_long %>%
+  mutate(response_type = str_sub(survey_question,4,6)) %>%
+           mutate(metric = str_sub(survey_question,1,3))
+                  
+# Rename response_type variable with "parent", "teacher", "student", or 'total"
+combined_survey_long <- combined_survey_long %>%
+  mutate(response_type = ifelse(response_type == "_p_", "parent",
+                               if_else(response_type == "_t_", "teacher",
+                                       if_else(response_type == "_s_", "student",
+                                               if_else(response_type == "_to", "total",  "NA")))))
+         
+```
+
+Create visualization(Box plots) for differences in responses
+
+```{r Visualize Responses}
+# Create box plots
+ggplot(data = combined_survey_long) + aes(x = response_type, y = score, fill = response_type) + geom_boxplot()
+
+#Without total
+
+combined_survey_long %>% filter(response_type != "total") %>% 
+  ggplot(aes(x = response_type, y = score, fill = response_type)) + geom_boxplot()
+
+
+
+
+
+```
+
+Student response on average was lowest, parent highest, and teachers in the middle but teachers had far more outliers that were low.
