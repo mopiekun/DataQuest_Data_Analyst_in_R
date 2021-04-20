@@ -1,0 +1,278 @@
+---
+title: 'Guided Project: Answering Business Questions using SQL'
+author: "Michael Opiekun"
+date: "4/17/2021"
+output: html_document
+---
+USing SQL in R to answer business questions based on chinook database and data.
+Looking at data for music sales.
+
+
+```{r setup}
+library(RSQLite)
+library(DBI)
+library(ggplot2)
+
+```
+
+Open ~/Documents/Programs_in_R/DataQuest/Data/chinook.db to view data
+
+```{r Open Data}
+
+db <- '~/Documents/Programs_in_R/DataQuest/Data/chinook.db'
+run_query <- function(q) {
+  conn  <- dbConnect(SQLite(), db)
+  result <- dbGetQuery(conn, q)
+  dbDisconnect(conn)
+  return(result)
+}
+
+show_tables <-  function() {
+  q = "SELECT name, type FROM sqlite_master WHERE type IN ('table','view');"
+  return(run_query(q))
+}
+
+show_tables
+
+```
+
+# Recommend Signing Artist by Genre
+Query to see number of tracks sold by genre in the US
+
+```{r Tracks Sold Genre}
+sold_genre_us = 'WITH usa_tracks_sold AS
+                (
+                SELECT il.* FROM invoice_line il
+                INNER JOIN invoice inv ON il.invoice_id = inv.invoice_id
+                INNER JOIN customer c ON inv.customer_id = c.customer_id
+                WHERE c.country = "USA"
+                )
+     SELECT 
+         g.name genre,
+         COUNT(uts.invoice_line_id) total_sold,
+         CAST(COUNT(uts.invoice_line_id) AS FLOAT)/(SELECT COUNT(*) FROM                          usa_tracks_sold) percent_sold
+                FROM usa_tracks_sold uts
+                INNER JOIN track t on t.track_id = uts.track_id
+                INNER JOIN genre g on g.genre_id = t.genre_id
+                GROUP BY 1
+                Order By 2 DESC
+                Limit 10;'
+run_query(sold_genre_us)
+
+# Plot using bar plot
+
+genre_sales = run_query(sold_genre_us)
+ggplot(data = genre_sales, aes(x = reorder(genre, -percent_sold),
+                              y = percent_sold)) + geom_bar(stat = "identity")
+
+
+```
+
+Based on plot, Punk Pop and BLues are the top sold and therefore recommended are:
+- Red Tone (Punk)
+- Slim Jim Bites (Pop)
+- Meteor and the Girls (Blues)
+
+
+# Investigating Sales Associate Performance
+
+```{r sales associate}
+emp_sales_performance = 'WITH employee_rep_sales AS
+              (
+              SELECT c.customer_id,
+              c.support_rep_id,
+              SUM(i.total) total
+              FROM customer c
+              INNER JOIN invoice i on i.customer_id = c.customer_id
+              GROUP BY 1, 2
+              )
+  SELECT e.first_name || " " || e.last_name employee_name,
+         e.hire_date hire_date,
+         SUM(emp.total) total_sales
+         FROM employee_rep_sales emp
+         INNER JOIN employee e ON e.employee_id = emp.support_rep_id
+         GROUP BY 1;'
+run_query(emp_sales_performance)
+
+#Plotting results
+employee_sales = run_query(emp_sales_performance)
+ggplot(data = employee_sales, aes(x = reorder(employee_name, -total_sales),
+                              y = total_sales)) + geom_bar(stat = "identity")
+```
+Jane Peacock sold most but also been working the longest. Standardization needed.
+
+
+# Visualizing Sales By Country
+Total number of customers
+Total value of sales
+Average value of sales per customer
+Average order value
+
+```{r Sales by Country}
+sales_country = '
+WITH country_other_sales AS
+    (SELECT 
+        CASE
+          WHEN 
+            (SELECT COUNT(*) FROM customer
+            WHERE country = c.country
+            ) = 1 THEN "Other"
+            ELSE c.country
+        END AS country,
+        c.customer_id,
+        il.*
+    FROM invoice_line il
+    INNER JOIN invoice i ON i.invoice_id = il.invoice_id
+    INNER JOIN customer c ON c.customer_id = i.customer_id
+    )
+SELECT 
+    country,
+    customers,
+    total_sales,
+    avg_sales,
+    avg_order
+FROM
+  (
+    SELECT
+      country,
+      COUNT(distinct customer_id) customers,
+      SUM(unit_price) total_sales,
+      SUM(unit_price)/COUNT(distinct customer_id) avg_sales,
+      SUM(unit_price)/COUNT(distinct invoice_id) avg_order,
+      CASE
+        WHEN country = "Other" THEN 1
+        ELSE 0
+      END AS sort
+    FROM country_other_sales
+    GROUP BY country
+    ORDER BY sort, total_sales DESC
+  );
+'
+run_query(sales_country)
+
+# Visualizations for each country metric
+
+country_sales = run_query(sales_country)
+
+ggplot(data = country_sales, aes(x = reorder(country, -total_sales),
+                                 y = total_sales,
+                                 fill = country)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Total Sales by Country",
+        aes(x = "Country",
+            y = "Total Sales")
+
+    ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data = country_sales, aes(x = reorder(country, -avg_sales),
+                                 y = avg_sales,
+                                 fill = country)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Average Sales by County",
+        aes(x = "Country",
+            y = "Average Sales")
+
+    ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data = country_sales, aes(x = reorder(country, -customers),
+                                 y = customers,
+                                 fill = country)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Customers per Country",
+        aes(x = "Country",
+            y = "Customers")
+
+    ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+```
+
+US has highest sales and highest number of customers. Czech Republic has highest average sales.
+
+
+
+# Albums vs Individual Tracks in Sales
+
+```{r Albums vs Tracks}
+albums_tracks = '
+WITH invoice_first_song AS
+    (
+    SELECT 
+      il.invoice_id invoice_id,
+      MIN(il.track_id) first_track_id
+    FROM invoice_line il
+    GROUP BY 1
+    )
+
+SELECT 
+  album_pur,
+  COUNT(invoice_id) number_of_invoices,
+  CAST(COUNT(invoice_id) AS FLOAT)/(
+                                    SELECT COUNT(*) FROM invoice
+                                  ) percent
+FROM
+  (
+    SELECT
+      ifs.*,
+      CASE
+        WHEN
+          (
+            SELECT t.track_id FROM track t
+            WHERE t.album_id = (
+                                SELECT t2.album_id FROM track t2
+                                WHERE t2.track_id = ifs.first_track_id
+                                )
+            EXCEPT
+            
+            SELECT il2.track_id FROM invoice_line il2
+            WHERE il2.invoice_id = ifs.invoice_id
+          ) IS NULL
+          
+        AND
+          (
+            SELECT il2.track_id FROM invoice_line il2
+            WHERE il2.invoice_id = ifs.invoice_id
+            
+            EXCEPT
+            
+            SELECT t.track_id FROM track t
+            WHERE t.album_id = (
+                                SELECT t2.album_id FROM track t2
+                                WHERE t2.track_id = ifs.first_track_id
+                                )
+          ) IS NULL
+          THEN "yes"
+          ELSE "no"
+      END AS "album_pur"
+    FROM invoice_first_song ifs
+  )
+GROUP BY album_pur;
+'
+
+run_query(albums_tracks)
+
+
+
+
+```
+
+Albums account for almost 20% of sales. Continue to keep buying items.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
