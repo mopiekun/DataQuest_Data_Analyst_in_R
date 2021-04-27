@@ -1,0 +1,158 @@
+---
+title: 'Guided Project: New York Solar Resource Data'
+author: "Michael Opiekun"
+date: "4/26/2021"
+output: html_document
+---
+
+This project is to use APIs to access data in the Government Solar Resource Data center to look at solar data in NYC. The goal is to extract the solar resource data for New York City in JSON format and create a data frame.
+
+API access token for Dataquest: 1f36137fbbe1602f779300dad26e4c1b7fbab631
+My access token: V3xLS1u7jWIv3tOe939YAVicQfyyGokUcf6C7ekq
+
+```{r setup}
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+```
+
+## Create list of base parameters
+```{r Parameters}
+key <- "V3xLS1u7jWIv3tOe939YAVicQfyyGokUcf6C7ekq"
+url <- "https://developer.nrel.gov/api/solar/solar_resource/v1.json"
+
+parameters_list <- list(api_key = key, lat = 41, lon = -75)
+```
+
+## Get Data from Source
+
+```{r Get Data}
+# API request
+response <- GET(url, query = parameters_list)
+# Check Status (200 is all good)
+status <- status_code(response)
+status
+
+# Display API format
+response_type <- http_type(response)
+response_type
+# Extract content
+content <- content(response, "text")
+
+print(content)
+
+```
+
+## Parse to R object
+```{r Parse to R}
+json_lists <- jsonlite::fromJSON(content)
+
+str(json_lists)
+
+```
+This gives complex list that needs to be separated into monthly values.
+
+## Building dataframe from complex list
+```{r Outputs from JSON}
+outputs <- json_lists$outputs
+
+avg_dni <- outputs$avg_dni$monthly
+avg_ghi <- outputs$avg_ghi$monthly
+avg_lat_tilt <- outputs$avg_lat_tilt$monthly
+
+dataframe <- tibble::tibble("month" = month.abb, "avg_dni" = avg_dni, "avg_ghi" = avg_ghi, "avg_lat_tilt" = avg_lat_tilt)
+
+dataframe
+```
+Dataframe is made up of many individual double list values that need to be converted to numeric type
+
+## Extracting from a Complex list
+```{r Second Unlist Technique}
+# Extract the outputs list from json_lists.
+outputs_list <-  json_lists$outputs
+# Simplify the outputs list.
+simplified_list <- unlist(outputs_list)
+# Restructure the simplified list into a matrix of 13 rows (the annual value and the 12 months' values).
+simplified_matrix <- matrix(simplified_list, nrow = 13)
+# Remove the annual values (the first row) from the data matrix.
+simplified_matrix <- simplified_matrix[-1, ]
+# Convert the matrix into a dataframe using the as.data.frame() function.
+dataframe_2 <- as.data.frame(simplified_matrix)
+dataframe_2
+
+```
+Difference is no variable names and no month column.
+
+## Create Function to extract solar resoure data
+
+```{r Extract Function}
+library(httr)
+library(dplyr)
+
+nrel_api_json_get_df <- function(endpoint, queries = list()) {
+
+  # Preparing the URL 
+  url <- modify_url("https://developer.nrel.gov", path = endpoint)
+
+  # API requests
+  response <- GET(url, query = queries)
+
+  # Tracking errors
+  if ( http_error(response) ){
+    print(status_code(response))
+    print(http_status(response))
+    stop("Something went wrong.", call. = FALSE)
+  }
+
+  if (http_type(response) != "application/json") {
+    stop("API did not return json", call. = FALSE)
+  }
+
+  # Extracting content
+  json_text <- content(response, "text")
+
+  # Converting content into Dataframe
+  table_df <- jsonlite::fromJSON(json_text)
+
+  # Return the dataframe  
+  dataframe <- tibble::tibble("month" = month.abb, 
+              "avg_dni" = as.numeric(table_df$outputs$avg_dni$monthly), 
+              "avg_ghi" = as.numeric(table_df$outputs$avg_ghi$monthly), 
+              "avg_lat_tilt" = as.numeric(table_df$outputs$avg_lat_tilt$monthly)
+  )
+}
+
+solar_resource_df <- nrel_api_json_get_df("api/solar/solar_resource/v1.json", queries = parameters_list)
+
+solar_resource_df
+
+```
+## Plot New York Solar Data
+
+```{r Plotting}
+ggplot(data = solar_resource_df, aes(x = month,
+                                     y = avg_dni,
+                                     group = 1)) +
+  geom_line() + geom_point() + theme_bw()
+
+# Convert month to factor
+solar_resource_df <- solar_resource_df %>% mutate(month = factor(month, levels = month.abb))
+
+ggplot(data = solar_resource_df, aes(x = month,
+                                     y = avg_dni,
+                                     group = 1)) +
+  geom_line() + geom_point() + theme_bw()
+
+```
+First plot is alphabetical and second plot is in order by month.
+
+
+
+
+
+
+
+
+
+
