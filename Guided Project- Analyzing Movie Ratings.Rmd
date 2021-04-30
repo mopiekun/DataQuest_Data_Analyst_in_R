@@ -1,0 +1,194 @@
+---
+title: 'Guided Project: Analyzing Movie Ratings'
+author: "Michael Opiekun"
+date: "4/29/2021"
+output: html_document
+---
+
+```{r setup}
+library(dplyr)
+library(rvest)
+library(ggplot2)
+```
+
+This project is to engage in webscraping movie ratings to identify the top 30 movies between March and July 2020. Then check how they relate to usr correlations.
+
+### Url
+```{r Url}
+url <- "http://dataquestio.github.io/web-scraping-pages/IMDb-DQgp.html"
+
+wp_content <- read_html(url)
+```
+
+## AS numeric and Parse
+```{r}
+as.numeric("10.50")
+as.numeric(c("14.59", "3.14", "55"))
+readr::parse_number(c("14 min", "17,35", "(2012)", "1,2,3,4"))
+stringr::str_trim(" Spaces before and after should disappear    ")
+
+```
+
+## Extract Movie Titles and Years
+```{r Titles}
+#Select Title
+selector <- ".lister-item-header a"
+# Extract title
+titles <- wp_content %>%
+  html_nodes(selector) %>%
+  html_text()
+
+titles
+```
+```{r Years}
+#year selector
+selector_2 <- ".lister-item-year"
+# Extract Years
+year <- wp_content %>%
+  html_nodes(selector_2) %>%
+  html_text()
+# Parse Years from other data
+years <- readr::parse_number(year)
+years
+```
+
+
+## Extract Runtimes and Genres
+
+```{r Runtimes and Genres}
+#Select Runtime
+selector_3 <- ".runtime"
+#Extract Runtime
+runtimes <- wp_content %>%
+  html_nodes(selector_3) %>%
+  html_text()
+#Parse Runtime numbers
+runtimes <-  readr::parse_number(runtimes)
+runtimes
+
+#Select Genres
+selector_4 <- ".genre"
+#Extract Genres
+genre <- wp_content %>%
+  html_nodes(selector_4) %>%
+  html_text()
+#Remove Whitespace from numbers
+genre <-  stringr::str_trim(genre)
+genre
+
+```
+## Selecting Attributes
+
+```{r User Ratings and Metascores}
+#Select Ratings
+selector_5 <- ".ratings-imdb-rating"
+attrtibute <- "data-value"
+#Extract Ratings
+user_ratings <- wp_content %>%
+  html_nodes(selector_5) %>%
+  html_attr(attrtibute)
+#Parse Ratings numbers
+user_ratings <-  readr::parse_number(user_ratings)
+user_ratings
+
+#Select Metascore
+selector_6 <- ".ratings-metascore"
+#Extract Metascore
+metascore <- wp_content %>%
+  html_nodes(selector_6) %>%
+  html_text()
+#Remove Whitespace from numbers
+metascore <-  readr::parse_number(stringr::str_trim(metascore))
+metascore
+
+```
+## Extract Votes
+
+```{r Votes}
+#Select Metascore
+selector_7 <- ".sort-num_votes-visible :nth-child(2)"
+#Extract Metascore
+votes <- wp_content %>%
+  html_nodes(selector_7) %>%
+  html_text()
+#Remove Whitespace from numbers
+votes <-  readr::parse_number(stringr::str_trim(votes))
+votes
+
+```
+## Deal with missing values
+Add NA to missing values and remove 17 from vectors
+
+```{r Missing Values}
+append_vector <- function(vector, inserted_indices, values){
+
+  ## Creating the current indices of the vector
+  vector_current_indices <- 1:length(vector)
+
+  ## Adding small amount of values (between 0 and 0.9) to the `inserted_indices`
+  new_inserted_indices <- inserted_indices + seq(0, 0.9, length.out = length(inserted_indices))
+
+  ## Appending the `new_inserted_indices` to the current vector indices
+  indices <- c(vector_current_indices, new_inserted_indices)
+
+  ## Ordering the indices
+  ordered_indices <- order(indices)
+
+  ## Appending the new value to the existing vector
+  new_vector <- c(vector, values)
+
+  ## Ordering the new vector wrt the ordered indices
+  new_vector[ordered_indices]
+}
+
+#Use append_vector funtion to insert NA into metascores vector in psotions 1, 1, 1, 13, 24
+
+metascore <- append_vector(metascore, c(1, 1, 1, 13, 24), NA)
+
+#Remove 17th element from titles, years, runtimes, genres, and metascores
+titles <- titles[-17]
+years <- years[-17]
+runtimes <- runtimes[-17]
+genre <- genre[-17]
+metascore <- metascore[-17]
+
+```
+
+## Create Dataframe with all values and plot
+
+```{r dataframe and plot}
+movies_df <- tibble( "titles" = titles, 
+                     "years" = years, 
+                     "runtimes" = runtimes, 
+                     "genres" = genre, 
+                     "user_ratings" = floor(user_ratings), 
+                     "metascores" = metascore, 
+                     "votes" = votes)
+
+ggplot(data = movies_df, aes(x = user_ratings,
+                             y = votes,
+                             group = user_ratings)) +
+  geom_boxplot()
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
