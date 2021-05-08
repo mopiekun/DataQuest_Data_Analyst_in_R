@@ -1,0 +1,238 @@
+---
+title: 'Guided Project: Finding the Best Markets to Advertise In'
+author: "Michael Opiekun"
+date: "5/6/2021"
+output: html_document
+---
+
+# Find two best markets to advertise in for E-Learning Products
+
+Goal is to find the two best markets for new coding participants and learners to advertise product in.
+
+# Understanding the Data
+Make use of data collecte by freeCodeCamp's 2017 New Coder Survey to avoid spending money on costly survey.
+
+```{r Setup}
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r Data}
+fcc <- read.csv('~/Documents/Programs_in_R/DataQuest/Data/2017-fCC-New-Coders-Survey-Data.csv')
+dim(fcc)
+head(fcc,5)
+```
+## Population of new coder questions:
+
+Where are these new coders located.
+What are the locations with the greatest number of new coders.
+How much money new coders are willing to spend on learning.
+
+Is the population representative?
+```{r Representation}
+fcc %>% group_by(JobRoleInterest) %>%
+  summarise('Freq' = 100*n()/nrow(fcc)) %>%
+  arrange(desc(Freq))
+
+```
+Most people are interested in Full-Stack Web Developer then Front-End Web Developer but many people are interested in multiple skills/jobs.
+
+Parse string apart to identify all jobs roles and interests (drop NA first)
+```{r string}
+# Split string to identify different interests
+multi_interests <- fcc %>%
+  select(JobRoleInterest) %>%
+  drop_na() %>%
+  rowwise %>%
+  mutate(interests = length(str_split(JobRoleInterest, ",")[[1]]))
+
+# Create frequency table for interests
+options <- multi_interests %>% 
+  ungroup() %>%
+  group_by(interests) %>%
+  summarise(Freq = n() *100/nrow(multi_interests))
+
+options
+
+```
+31.6 % of people have singular idea of the role they want to be in
+
+ Since the courses selling ar for Web Developer and Mobile Developer Check for jobs
+ 
+```{r Check for Jobs}
+developer <- str_detect(fcc$JobRoleInterest, "Web Developer|Mobile Developer")
+freq_table <- table(developer)
+freq_table <- freq_table*100/sum(freq_table)
+freq_table
+
+```
+Approximately 86% of respondents included a form of developer in their interests
+
+# Where are respondents
+
+```{r Locations}
+#Isolate people answered role they were interested in
+fcc_good <- fcc %>%
+  drop_na(JobRoleInterest) 
+
+locations <- fcc_good %>% group_by(CountryLive) %>%
+  summarise(Freq = n(),
+            Percent = n() *100/nrow(fcc_good)) %>%
+  arrange(desc(Percent))
+
+```
+~45% of respondents that specified a role they were interested in came from the US while the next highest number of respondents came from India with ~8%.
+
+# Money Willing to spend
+
+Identify amount people are willing to spend for subscriptions since product is $59 per month. Only use US, India, UK, and Canada since they were the highest number of respondents.
+
+Time spent programming is needed but some people have spent 0 months programming so need to change to 1.
+
+```{r Money Willing to Spend}
+# So that no division by 0
+fcc_good <- fcc_good %>%
+  mutate(MonthsProgramming = replace(MonthsProgramming, MonthsProgramming == 0,1))
+
+# Money person spends per month
+fcc_good <- fcc_good%>%
+  mutate(money_per_month = MoneyForLearning/MonthsProgramming)
+
+# Identify rows with NA
+fcc_good %>% summarise(na_count = sum(is.na(money_per_month))) %>%
+  pull(na_count)
+
+#Keep only complete rows in 'money_per_month' column
+
+fcc_good <- fcc_good %>% drop_na((money_per_month))
+
+```
+
+Group data by country but first remove rows with NA in CountryLive
+```{r Country Live}
+#Remove NA from CountryLive
+fcc_good <- fcc_good %>% drop_na(CountryLive)
+
+#Check number of data points
+fcc_good %>% group_by(CountryLive) %>%
+  summarise(Freq = n()) %>%
+  arrange(desc(Freq)) %>%
+  head()
+
+```
+Average money spent per month by individual
+```{r Money Spent}
+country_mean <- fcc_good %>% filter(CountryLive == 'United States of America'| CountryLive == 'India' | CountryLive == 'United Kingdom'|CountryLive == 'Canada') %>%
+  group_by(CountryLive) %>%
+  summarise(mean = mean(money_per_month)) %>%
+  arrange(desc(mean))
+
+country_mean
+
+```
+
+
+US willing to spend most money at 228 per month and India second most at 135 per month.
+
+# May be outliers that are skewing the amount spent
+
+```{r Ouliers }
+val_countries <- fcc_good %>% filter(CountryLive == 'United States of America'| CountryLive == 'India' | CountryLive == 'United Kingdom'|CountryLive == 'Canada') %>% mutate(index = row_number())
+
+ggplot(data = val_countries, aes(x = CountryLive, y = money_per_month)) +
+  geom_boxplot() +
+  ggtitle("Money Spent Per Month in Country") +
+  xlab("Country") +
+  ylab("Money Per Month")
+
+
+```
+Extreme outliers in US
+```{r US Outliers}
+us_out <- val_countries %>% filter(CountryLive == 'United States of America' & money_per_month >= 6000)
+
+us_out
+
+val_countries  <-  val_countries %>% 
+  filter(!(index %in% us_out$index))
+ggplot(data = val_countries, aes(x = CountryLive, y = money_per_month)) +
+  geom_boxplot() +
+  ggtitle("Money Spent Per Month in Country") +
+  xlab("Country") +
+  ylab("Money Per Month")
+```
+13 respondents paid over 6000 per month for coding . 8 had been programming for less than three months ad six had attended bootcamps.
+Extreme outliers in US
+```{r India Outliers}
+india_out <- val_countries %>% filter(CountryLive == 'India' & money_per_month >= 2500)
+
+india_out
+```
+None attended bootcamp so data may or may not be good
+
+```{r}
+#Remove Outliers
+val_countries  <-  val_countries %>% 
+  filter(!(index %in% india_out$index))
+ggplot(data = val_countries, aes(x = CountryLive, y = money_per_month)) +
+  geom_boxplot() +
+  ggtitle("Money Spent Per Month in Country") +
+  xlab("Country") +
+  ylab("Money Per Month")
+```
+One outlier in Canada
+```{r Canada Outlier}
+canada_out <- val_countries %>% filter(CountryLive == 'Canada' & money_per_month >= 4000)
+
+canada_out
+```
+Attended bootcamp but programming for short time
+
+```{r}
+#Remove Outliers
+val_countries  <-  val_countries %>% 
+  filter(!(index %in% canada_out$index))
+ggplot(data = val_countries, aes(x = CountryLive, y = money_per_month)) +
+  geom_boxplot() +
+  ggtitle("Money Spent Per Month in Country") +
+  xlab("Country") +
+  ylab("Money Per Month")
+```
+Cleaned data plots
+```{r Clean Data}
+countries_mean <- val_countries %>% 
+  group_by(CountryLive) %>%
+  summarise(mean =  mean(money_per_month)) %>%
+  arrange(desc(mean))
+
+countries_mean
+
+ggplot(data = val_countries, aes(x = CountryLive, y = money_per_month)) +
+  geom_boxplot() +
+  ggtitle("Money Spent Per Month in Country") +
+  xlab("Country") +
+  ylab("Money Per Month")
+```
+Advertise in US because of number of people interested and money spent. Second country is difficult since Canada and India have similar respondents and money.
+
+
+Check data to see if still correct number
+```{r Check Data}
+val_countries %>% group_by(CountryLive) %>%
+  summarise(freq = n() * 100 / nrow(val_countries) ) %>%
+  arrange(desc(freq)) %>%
+  head()
+```
+
+```{r}
+# Frequency table to check if we still have enough data
+val_countries %>% group_by(CountryLive) %>%
+  summarise(freq = n() ) %>%
+  arrange(desc(freq)) %>%
+  head()
+
+```
+For only two markets, India and US are recommended. Canada does have more money than UK in the game but India and US make the most sense. Can split budget to advertise more in US than in other countries which is recommended.
