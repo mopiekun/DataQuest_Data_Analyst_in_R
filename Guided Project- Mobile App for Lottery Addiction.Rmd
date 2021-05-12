@@ -1,0 +1,165 @@
+---
+title: 'Guided Project: Mobile App for Lottery Addiction'
+author: "Michael Opiekun"
+date: "5/10/2021"
+output: html_document
+---
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+## Help build app that helps gambling addicts understand and estimate their odds in winning to help them realize that increasing odds of winning is difficult.
+
+Questions:
+What is the probability of winning the big prize with a single ticket?
+What is the probability of winning the big prize if we play 40 different tickets (or any other number)?
+What is the probability of having at least five (or four, or three, or two) winning numbers on a single ticket?
+
+Create a function for factorial and combinations
+```{r Fucntions}
+factorial_1 <- function(n) {
+  product <- 1
+  for (i in 1:n) {
+    product <- product * i
+  }
+  return(product)
+}
+
+combinations <- function(n,k) {
+  combo <-factorial_1(n)/(factorial_1(k)*factorial_1(n-k))
+  return(combo)
+}
+
+```
+
+Write a function that takes in 6 values from 1-49 as a vector and gives the probability of winning.
+
+```{r Probability of a ticket}
+one_ticket_probability <- function(ticket) {
+  total_combonations <- combinations(49,6)
+  probability <- 1/total_combonations
+  print_prob <- sprintf("%1.9f", probability)
+  to_print <- paste("You have a ", print_prob,"% chance of winning the large prize.", sep = "")
+return(to_print)
+}
+
+one_ticket_probability(c(4,5,6,7,8,9))
+
+```
+
+Use the fact that no matter what numbers are chosen, the probability of one ticket or combination of numbers does not change.
+
+```{r Data}
+lottery <- read.csv('~/Documents/Programs_in_R/DataQuest/Data/649.csv')
+
+dim(lottery)
+head(lottery)
+```
+
+
+```{r Practice for pmap}
+data1 <- c(1, 3, 5)
+data2 <- c(2, 4, 6)
+data3 <- c(8, 9, 7)
+unnamed_list <- list(data1, data2, data3)
+first_vector <- unnamed_list[[1]]
+named_list <- list('first' = data1, 'second' = data2, 'third' = data3)
+first_item_sum <- named_list$first[1] + named_list$second[1] + named_list$third[1]
+
+```
+
+```{r pmap}
+data <- list(data1, data2, data3)
+averages <- pmap(data, function(x,y,z) {(x + y + z)/3})
+first_average <- unlist(averages[1])
+
+
+```
+
+Applying function to vector from multiple rows
+```{r Extract from Rows}
+historical_nums <- pmap(list(a <- lottery$`NUMBER.DRAWN.1`,
+                        b <- lottery$`NUMBER.DRAWN.2`,
+                        c <- lottery$`NUMBER.DRAWN.3`,
+                        d <- lottery$`NUMBER.DRAWN.4`,
+                        e <- lottery$`NUMBER.DRAWN.5`,
+                        f <- lottery$`NUMBER.DRAWN.6`),
+                        function(a,b,c,d,e,f) {c(a,b,c,d,e,f)})
+
+```
+
+```{r Function}
+check_historical_occurrences <- function(numbers, historic_numbers = historical_nums) {
+  historical_win <- map(historic_numbers, function(x) {setequal(x,numbers)})
+  past_matches <- sum(unlist(historical_win))
+  statement <- paste("The numbers you entered have won ",
+                     past_matches,
+                     " times in the past. ",
+                     "Your chance of winning the large prize in the next drawing is 0.0000072%.", sep = "")
+  return(statement)
+}
+
+
+check_historical_occurrences(c(3,12,11,14,41,43))
+check_historical_occurrences(c(8,9,10,11,12,13))
+
+```
+Count the times TRUE appears in matches to identify the number a set of number has won in the past.
+
+Write function for the probability of winning with multiple tickets
+
+```{r Multiple Tickets}
+multi_ticket_probability <- function(number_of_tickets) {
+  combinations_total <- combinations(49,6)
+  win_probability <- number_of_tickets/combinations_total*100
+  print_prob <- sprintf("%1.9f", win_probability)
+  to_print <- paste("You have a ", print_prob, "% chance of winning the highest prize with ", number_of_tickets, " tickets purchased.", sep = "")
+  return(to_print)
+}
+
+test_cases <- c(1, 10, 100, 10000, 1000000, 6991908, 13983816)
+
+for (i in test_cases) {
+  print(paste("For ", i, " tickets, ", multi_ticket_probability(i), sep = ""))
+}
+
+
+```
+
+Including combination and then printing based on number of tickets purchased.
+
+
+## Function for numbers to demonstrate probability of winning depending on the value of the integer in range from 3-5 for other winning options than the full six number option.
+
+Creating a combination of a combination.
+
+```{r Winning with fewer than 6 numbers}
+probability_less_6 <- function(number) {
+  ticket_combinations <- combinations(6,number)
+  combinations_remaining <- combinations(49-6,6-number)
+  outcomes <- ticket_combinations * combinations_remaining
+  total_combinations <- combinations(49,6)
+  
+  probability <- (outcomes/total_combinations) *100
+  
+  for_print <- sprintf("%1.9f", probability)
+  
+  to_print <- paste("There is a ", for_print, "% chance of winning the prize for the ", number, " prize.", sep = "")
+  return(to_print)
+}
+
+```
+
+```{r test}
+nums <- c(3,4,5)
+
+for (i in nums) {
+print(paste( "For ", i, " tickets, the proability of winning is ", probability_less_6(i), sep = ""))
+}
+
+
+```
+
