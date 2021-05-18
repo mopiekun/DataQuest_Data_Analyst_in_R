@@ -1,0 +1,285 @@
+---
+title: 'Guided Project: Building a Spam Filter with Naive Bayes'
+author: "Michael Opiekun"
+date: "5/13/2021"
+output: html_document
+---
+
+```{r setup}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(tidyr)
+```
+
+## Use Naive Bayes algorithm to identify spam messages.
+
+To classify messages as spam or non-spam, we saw in the previous mission that the computer:
+
+Humans provide a computer with information on what spam looks like and what non-spam looks like
+The computer uses that human knowledge to estimate probabilities for new messages — probabilities for spam and non-spam.
+Finally, the computer classifies a new message based on the probability values it calculated in step 2 — if the probability for spam is greater, then it classifies the message as spam. Otherwise, it classifies it as non-spam. In cases where these two probabilities are near-equal, we may want a human to classify the message. We'll come back to this issue in the guided project).
+
+## Data
+```{r Data}
+spam <- read.delim("~/Documents/Programs_in_R/DataQuest/Data/SMSSpamCollection", header =  FALSE)
+spam <- rename(spam, 'label' = V1,'message' = V2)
+rows <- nrow(spam)
+columns <- ncol(spam)
+percent_spam <- sum(spam$label == 'spam')/nrow(spam) *100
+percent_non_spam <- sum(spam$label == 'ham')/nrow(spam) *100
+
+```
+
+Approximately 13.8% of the messages are spam while the other 86.2% are not. The data contains 3184 messages in total.
+
+## Create three distinct sets:
+training set, 80% of data
+cross-validation set, 10% of data
+test set, 10% of data
+```{r Distinct Sets}
+t_size <- .8*rows
+cval <- .1*rows
+test_set_size <- .1*rows
+set.seed(1)
+#Set of training indices
+training <- sample(1:rows,size = t_size, replace = FALSE)
+
+# Indices not used by training set
+remaining <- setdiff(1:rows, training)
+
+# Creating cross_validation set and test set
+cross_val <- remaining[1:(length(remaining)/2)]
+test_set <- remaining[(length(remaining)/2 +1): length(remaining)]
+
+#Create data set
+spam_training <- spam[training,]
+spam_cv <- spam[cross_val,]
+spam_test <- spam[test_set,]
+
+#Check to see if spam in each set
+print(sum(spam_training$label == "ham")/nrow(spam_training))
+print(sum(spam_cv$label == "ham")/nrow(spam_cv))
+print(sum(spam_test$label == "ham")/nrow(spam_test))
+```
+
+## Format words to make easier to manipulate
+
+```{r Change words}
+# Change all letters to lower case
+clean_training <- spam_training %>% 
+  mutate(message = str_to_lower(message) %>%
+           
+           str_replace_all("[[:punct:]]","") %>%
+           str_replace_all("[\u0094\u0092\u0096\n\t]", "") %>%
+           str_replace_all("[[:digit:]]","")  %>%
+           str_replace_all(">"," ") %>%
+           str_squish() 
+  )
+
+```
+
+## Create the vocabulary for training and Nvocab
+
+```{r Vocab}
+vocab <- NULL
+messages <- clean_training %>% pull(message)
+
+# Iterate through each word
+for (i in messages) {
+  words <- str_split(i, " ")[[1]]
+  vocab <- c(vocab, words)
+}
+
+#Unique words
+
+vocab <- vocab %>% unique()
+
+```
+
+## Calculate Nspam Nham, Nvocab
+
+```{r Ns}
+
+ham_mess <- clean_training %>% 
+  filter(label == 'ham') %>%
+  pull(message)
+
+spam_mess <- clean_training %>% 
+  filter(label == 'spam') %>%
+  pull(message)
+
+ham_words <- NULL
+for (i in ham_mess) {
+  words <- str_split(i, " ")[[1]]
+  ham_words <- c(ham_words, words)
+}
+
+spam_words <- NULL
+for (i in spam_mess) {
+  words <- str_split(i, " ")[[1]]
+  spam_words <- c(spam_words, words)
+}
+
+ham_words <- ham_words %>% unique()
+spam_words <- spam_words %>% unique()
+
+#Calculate Ns
+vocab_n <- vocab %>% length()
+ham_n <- ham_words %>% length()
+spam_n <- spam_words %>% length()
+```
+
+## Iterate over each message to identify probability of words in spam and ham messages
+
+```{r Words in messages}
+# Probability of word in spam or ham
+prob_spam <- sum(clean_training$label == 'spam')/nrow(clean_training)
+prob_ham <- sum(clean_training$label == 'ham')/nrow(clean_training)
+
+#Make spam and ham into two tibbles
+spam_counts <- tibble(word = spam_words) %>%
+  # Number of times word shows up in spam messages
+  mutate(count = map_int(word, function(mess) {
+   #Break message into words then check word in message for match. Sum total matches 
+    map_int(spam_mess, function(sp) {
+      (str_split(sp, " ")[[1]] == mess) %>% sum
+    }) %>%
+      # sum for all messages
+      sum
+  }))
+
+```
+```{r Ham words}
+#Make spam and ham into two tibbles
+ham_counts <- tibble(word = ham_words) %>%
+  # Number of times word shows up in spam messages
+  mutate(count = map_int(word, function(mess) {
+   #Break message into words then check word in message for match. Sum total matches 
+    map_int(ham_mess, function(sp) {
+      (str_split(sp, " ")[[1]] == mess) %>% sum
+    }) %>%
+      # sum for all messages
+      sum
+  }))
+
+```
+```{r join tibbles}
+training_counts <- full_join(ham_counts, spam_counts, by = "word") %>%
+  mutate(
+    #Fill NA with 0
+    count.x = ifelse(is.na(count.x), 0, count.x),
+    count.y = ifelse(is.na(count.y), 0, count.y)
+  ) %>%
+  rename('ham' = count.x, 'spam' = count.y)
+
+```
+
+## Create function to categorize messages as spam or not-spam
+
+```{r Categorization}
+# Alpha as 1 for smoothing factor
+categorize <- function(message, alpha = 1) {
+  #Break up and clean message
+  cleaned <- str_to_lower(message) %>%
+           str_squish() %>%
+           str_replace_all("[[:punct:]]","") %>%
+           str_replace_all("[\u0094\u0092\u0096\n\t]", "") %>%
+           str_replace_all("[[:digit:]]","")  %>%
+           str_replace_all(">"," ") 
+           
+  words <- str_split(cleaned, " ")[[1]]
+  
+  # Account for words that do not occur in training
+  new_words <- setdiff(vocab, words)
+  
+  # Add to counts
+  new_word_probability <- tibble(word = new_words, spam_prob = 1, ham_prob = 1)
+  
+  # Filter vocab to include only words in message
+  probabilities <-  training_counts %>%
+    filter(word %in% words) %>% # only words in message
+    mutate(
+      #Probabilities for counts
+      spam_prob = (spam + alpha)/(spam_n + alpha * vocab_n),
+      ham_prob = (ham + alpha)/(ham_n + alpha * vocab_n)
+      
+    ) %>%
+    bind_rows(new_word_probability) %>%
+    pivot_longer(
+      cols = c("spam_prob", "ham_prob"),
+      names_to = "label",
+      values_to = "probability"
+    ) %>%
+    group_by(label) %>%
+    summarise(word_prob = prod(probability))
+  
+  # Calculate the conditional probabilities
+  p_spam_mess <- prob_spam * (probabilities %>% filter(label == "spam_prob") %>% 
+                             pull(word_prob))
+  p_ham_mess <- prob_ham * (probabilities %>% filter(label == "ham_prob") %>% 
+                           pull(word_prob))
+  
+  # Classify the message based on the probability
+  ifelse(p_spam_mess >= p_ham_mess, "spam", "ham")
+}
+
+
+training_pred <- clean_training %>%
+  mutate(prediction = map_chr(message, function(m) {categorize(m)})
+         )
+
+```
+
+## Calculating Accuracy of Categorization
+
+```{r Accuracy}
+confusion_table <- table(training_pred$label, training_pred$prediction)
+accuracy <- (confusion_table[1,1] + confusion_table[2,2])/nrow(training_pred)
+
+```
+Accuracy is 89.63% to identify spam ahnd non-spam messages correctly.
+
+## Hyperparameter
+```{r Tuning}
+a_grid <- seq(.05,1,by = 0.05)
+a_accuracy <- NULL
+
+for (alpha in a_grid) {
+  #Probabilities of each alpha
+  a_probs <- training_counts %>%
+    filter(word %in% words) %>% 
+    mutate(
+      #Probabilities for alpha
+      spam_prob = (spam + alpha)/(spam_n + alpha * vocab_n),
+      ham_prob = (ham + alpha)/(ham_n + alpha * vocab_n)
+      )
+  #Predict each message
+  cv <- spam_cv %>% 
+    mutate(
+      prediction = map_chr(message, function(m) { categorize(m, alpha = alpha) })
+    ) 
+  # Accuracy of each categorization
+  confusion <- table(cv$label, cv$prediction)
+  a_acc <- ((confusion[1,1]+ confusion[2,2])/nrow(spam_cv))
+  a_accuracy <- c(a_accuracy, a_acc)
+}
+
+```
+Accuracy increases with smaller alpha. Use alpha .1
+
+## Testing Performance
+
+```{r Performance}
+best_a <- 0.1
+
+# Use alpha with training parameters to perform final predictions
+spam_test <- spam_test %>%
+  mutate(prediction = map_chr(message, function(m) {categorize(m, alpha = best_a)})
+         )
+confusion <- table(spam_test$label, spam_test$prediction)
+test_acc <- (confusion[1,1] + confusion[2,2])/nrow(spam_test)
+test_acc
+```
+
+93.7% accuracy
