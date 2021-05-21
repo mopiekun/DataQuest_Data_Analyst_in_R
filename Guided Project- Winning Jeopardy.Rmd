@@ -1,0 +1,184 @@
+---
+title: 'Guided Project: Winning Jeopardy'
+author: "Michael Opiekun"
+date: "5/18/2021"
+output: html_document
+---
+
+```{r setup}
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(stringr)
+library(tidyr)
+```
+
+## To compete and win at Jeopardy, one has to know many different pieces of data to excel. Data from Jeopardy is available to look at and and analyze.
+
+```{r Data}
+jeopardy <- read_csv('~/Documents/Programs_in_R/DataQuest/Data/jeopardy.csv')
+head(jeopardy, 5)
+colnames(jeopardy)
+colnames(jeopardy) <- c('show_name', 'air_date', 'round','category','value','question','answer')
+```
+## Cleaning data
+Value includes "$" "," and "None". Remove "None" and 
+```{r Clean Data}
+jeopardy_clean <- jeopardy %>% filter(value != "None") %>%
+  mutate(value = value %>% str_replace_all("[$,]","" ) %>% 
+           as.numeric
+  )
+```
+
+Normalize question, answer, and category to remove all punctuation and non-letters and nnumbers. Lower case everything
+```{r normalize}
+jeopardy_clean <- jeopardy_clean %>% 
+  mutate(question = str_to_lower(question) %>%
+           str_replace_all("[^A-Za-z0-9 ]", ""),
+         answer = str_to_lower(answer) %>%
+           str_replace_all("[^A-Za-z0-9 ]", ""),
+         category = str_to_lower(category) %>%
+           str_replace_all("[^A-Za-z0-9 ]", "")
+         )
+head(jeopardy_clean)
+
+```
+
+Separate date into year, month, day
+```{r date}
+jeopardy_clean <- jeopardy_clean %>%
+  separate(., air_date, into = c("year", "month", "day"), sep = "-") %>%
+  mutate(year = as.numeric(year),
+         month = as.numeric(month),
+         day = as.numeric(day)
+  )
+
+```
+
+## Chi Squared to identify frequency and staitstical probability of a certain category being included in a jeopardy round
+
+Create null hypothesis that all subjects are unique
+```{r Null}
+n_questions <- nrow(jeopardy_clean)
+p_category_expected <-   1/3369 
+p_not_category_expected <- 3368/3369 
+p_expected <- c(p_category_expected, p_not_category_expected)
+```
+
+Need to identify each category so that multiples from the same day are not selected but the course does not say to do this so I will continue with the course and return after this section.
+
+```{r Categories}
+categories <- jeopardy_clean %>%
+  select(show_name, category)
+```
+```{r Science}
+n_science <- 0
+for(c in categories$category) {
+  if("science" %in% c ) {
+    n_science = n_science + 1
+  }
+}
+
+science_obs <- c(n_science, n_questions-n_science)
+chisq.test(science_obs, p = p_expected)
+
+```
+```{r History}
+
+n_history <- 0
+for(c in categories$category) {
+  if("history" %in% c ) {
+    n_history = n_history + 1
+  }
+}
+
+history_obs <- c(n_history, n_questions-n_history)
+chisq.test(history_obs, p = p_expected)
+
+```
+```{r Shakespeare}
+n_shake <- 0
+for(c in categories$category) {
+  if("shakespeare" %in% c ) {
+    n_shake = n_shake + 1
+  }
+}
+
+shake_obs <- c(n_shake, n_questions-n_shake)
+chisq.test(shake_obs, p = p_expected)
+
+```
+Each category was showed a p-value less than .01 and therefore the null hypothesis should be rejected that science, history, and Shakespeare do not have a higher prevalence of showing up.
+
+## Sort questions to identify any repeated questions by identifying large (greater than 6 charcters) words to see if they repeat
+
+```{r Questions}
+terms_used <- character(0)
+
+for (i in jeopardy_clean$question) {
+  #Split each question into words
+  words <- str_split(i, " ")[[1]]
+  
+  #Check for words longer than 6 characters
+  for (w in words) {
+    if(!w %in% terms_used & nchar(w) >= 6) {
+      terms_used <- c(terms_used, w)
+    }
+  }
+}
+
+```
+
+## Identify words that come from high value questions (800 or greater)
+
+```{r High Value Questions}
+
+high_questions <- NULL
+expected = c(2/5, 3/5) # Expected values
+for (word in terms_used) { #index to test [1:10] ran 1:1634 but was taking a long time
+  n_high <- 0
+  n_low <- 0
+  for (i in 1:length(jeopardy_clean$question)) {
+    
+    #Split question to identify words
+    split_question <- str_split(jeopardy_clean$question[i], " ")[[1]]
+    
+    # Identify high value terms by checking value after finding question
+    if(word %in% split_question & jeopardy_clean$value[i] >= 800) {
+      n_high <- n_high + 1
+    } else if (word %in% split_question & jeopardy_clean$value[i] < 800) {
+      n_low <- n_low + 1
+    }
+  }
+  
+  # Test counts to see if deviation from expected
+  chi_test <- chisq.test(c(n_high, n_low), p = expected)
+  question_stat <- c(word, n_high, n_low, chi_test$p.value)
+  
+  #Add to original table
+  high_questions <- rbind(high_questions, question_stat)
+  
+}
+
+
+```
+
+Clean up
+```{r Clean up}
+high_questions_clean <- as_tibble(high_questions)
+colnames(high_questions_clean) <- c("word", "n_high", "n_low", "p_value")
+
+head(high_questions_clean %>% arrange(p_value))
+
+```
+Example and pulitzer are the highest ranking single words and most likely to be high value questions compared to low value questions.
+
+
+
+
+
+
+
+
+
+
