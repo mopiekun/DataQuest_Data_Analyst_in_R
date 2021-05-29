@@ -1,0 +1,115 @@
+---
+title: 'Guided Prject: Predicting Car Prices'
+author: "Michael Opiekun"
+date: "5/28/2021"
+output: html_document
+---
+# Predicting Car Prices using Machine Learning
+
+Use k-nearest neighbors algorithm to predict car prices based on various characteristics including body style, engine type and horsepower..
+
+
+```{r setup}
+library(readr)
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(caret)
+```
+
+## Data
+Remove non-continuous data, make sure all columns are of numeric type, removes NAs from variable to predcit (price). 
+
+1. symboling: -3, -2, -1, 0, 1, 2, 3. 
+2. normalized-losses: continuous from 65 to 256. 
+3. make: 
+alfa-romero, audi, bmw, chevrolet, dodge, honda, 
+isuzu, jaguar, mazda, mercedes-benz, mercury, 
+mitsubishi, nissan, peugot, plymouth, porsche, 
+renault, saab, subaru, toyota, volkswagen, volvo 
+
+4. fuel-type: diesel, gas. 
+5. aspiration: std, turbo. 
+6. num-of-doors: four, two. 
+7. body-style: hardtop, wagon, sedan, hatchback, convertible. 
+8. drive-wheels: 4wd, fwd, rwd. 
+9. engine-location: front, rear. 
+10. wheel-base: continuous from 86.6 120.9. 
+11. length: continuous from 141.1 to 208.1. 
+12. width: continuous from 60.3 to 72.3. 
+13. height: continuous from 47.8 to 59.8. 
+14. curb-weight: continuous from 1488 to 4066. 
+15. engine-type: dohc, dohcv, l, ohc, ohcf, ohcv, rotor. 
+16. num-of-cylinders: eight, five, four, six, three, twelve, two. 
+17. engine-size: continuous from 61 to 326. 
+18. fuel-system: 1bbl, 2bbl, 4bbl, idi, mfi, mpfi, spdi, spfi. 
+19. bore: continuous from 2.54 to 3.94. 
+20. stroke: continuous from 2.07 to 4.17. 
+21. compression-ratio: continuous from 7 to 23. 
+22. horsepower: continuous from 48 to 288. 
+23. peak-rpm: continuous from 4150 to 6600. 
+24. city-mpg: continuous from 13 to 49. 
+25. highway-mpg: continuous from 16 to 54. 
+26. price: continuous from 5118 to 45400.
+
+```{r Data}
+cars <- read_csv('~/Documents/Programs_in_R/DataQuest/Data/imports-85.data', col_names = FALSE)
+colnames(cars) <- c('symboling', 'normalized_losses', 'make', 'fuel_type', 'aspiration', 'num_of_doors', 'body_style', 'drive_wheels', 'engine_location', 'wheel_base', 'length', 'width', 'height', 'curb_weight', 'engine_type', 'num_cylinders','engine_size', 'fuel_system', 'bore', 'stroke', 'compression_ratio', 'horsepower', 'peak_rpm', 'city_mpg', 'highway_mpg', 'price')
+
+# Remove all columns that are not usable in k-nearest neighbors (non numbers)
+cars <- cars %>% select(-symboling,  -make, -fuel_type, -aspiration, -num_of_doors, -body_style, -drive_wheels, -engine_location, -engine_type, -num_cylinders, -fuel_system)
+cars$normalized_losses <- as.numeric(as.character(cars$normalized_losses))
+cars$bore <- as.numeric(as.character(cars$bore))
+cars$stroke <- as.numeric(as.character(cars$stroke))
+cars$horsepower <- as.numeric(as.character(cars$horsepower))
+cars$peak_rpm <- as.numeric(as.character(cars$peak_rpm))
+cars$price <- as.numeric(as.character(cars$price))
+
+cars <- cars %>% filter(!is.na(price))
+cars <- tibble(cars)
+```
+
+## Test relationships with price using featureplot()
+
+```{r Featureplot}
+featurePlot(x = cars[,1:15], y = cars$price) 
+
+```
+There seems to be a positive relationship between price and horsepower, curb-weight, engine_size, bore (weaker), wheel base, length, and width. There seems to be a negative relationship between price and city mpg and highway mpg.
+
+## Create Data Partition of 80/20
+
+```{r Partition}
+training_indices <- createDataPartition(cars[['price']], p = .8, list =  FALSE)
+training_cars <- cars[training_indices,]
+test_cars <- cars[-training_indices,]
+
+```
+
+
+```{r traincontrol}
+train_control <- trainControl(method = "cv", number = 4)
+```
+
+## Training the model
+```{r Training}
+knn_model <- train(price ~ highway_mpg + engine_size,
+                    data = cars,
+                    method = "knn",
+                    trControl = train_control,
+                    preProcess = c("center", "scale"))
+
+
+```
+
+## Predictions
+
+```{r Predictions}
+predictions <- predict(knn_model, newdata = test_cars)
+postResample(pred = predictions, obs = test_cars$price)
+
+```
+
+
+
+
