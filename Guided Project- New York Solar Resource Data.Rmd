@@ -7,8 +7,8 @@ output: html_document
 
 This project is to use APIs to access data in the Government Solar Resource Data center to look at solar data in NYC. The goal is to extract the solar resource data for New York City in JSON format and create a data frame.
 
-API access token for Dataquest: 1f36137fbbe1602f779300dad26e4c1b7fbab631
-My access token: V3xLS1u7jWIv3tOe939YAVicQfyyGokUcf6C7ekq
+API access token for Dataquest: secret
+My access token: secret
 
 ```{r setup}
 library(httr)
